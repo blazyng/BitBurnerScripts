@@ -7,13 +7,15 @@ export async function main(ns) {
   // Phase 1: Scan and filter all hackable servers.
   const allServers = await findAllServers(ns);
 
-  // Filter out 'home' and all purchased servers. These will not be targeted.
-  const targetServers = allServers.filter(server => {
+  // Filter out 'home' and all purchased servers.
+  let targetServers = allServers.filter(server => {
     return server !== "home" && !ns.getServer(server).purchasedByPlayer;
   });
 
+  // We must filter the target servers to only include those we have root access to.
+  targetServers = targetServers.filter(server => ns.hasRootAccess(server));
+
   // We find all servers that can be used to run the hacking script.
-  // This includes 'home' and all purchased servers.
   const hackerServers = allServers.filter(server => {
     return ns.hasRootAccess(server) && ns.getServerMaxRam(server) > 0;
   });

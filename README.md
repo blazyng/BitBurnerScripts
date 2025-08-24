@@ -22,7 +22,7 @@ The `orechesterUwu.js` script will then handle the execution and management of a
 
 ### 2. Network Hacking
 - **`scanAndNuke.js`**: The network expansion tool. It scans the entire network, opens ports using available `.exe` files, and gains root access on all hackable servers.
-- **`demon.js`**: The hacking manager. It deploys the `hack.js` worker script to all servers with available RAM to perform money-making operations.
+- **`demon.js`**: The hacking manager. It deploys the `hack.js` worker script to all servers with available RAM to perform money-making operations. **Now uses a safer target list by filtering out your home and purchased servers.**
 - **`hack.js`**: The worker script. This is the core hacking engine that weakens, grows, and hacks a single server. It is run in parallel by `demon.js` across your network.
 - **`hackWithoutExternalServers.js`**: A standalone script for hacking from your home server only. It can be used as a simple backup or early-game hacker.
 
@@ -32,4 +32,5 @@ The `orechesterUwu.js` script will then handle the execution and management of a
 
 ### 4. Utility Scripts
 - **`autoCreateProgramms.js`**: A utility script that checks your hacking skill and automatically starts creating the required `.exe` files in the correct order.
-- **`autoInfiltrate.js`**: A specialized, manual script for automating infiltration mini-games. Run it on demand to quickly earn money and faction reputation.git 
+- **`installBackdoors.js`**: **A new script that automates the process of installing backdoors on vulnerable servers to gain faction reputation.**
+- **`autoInfiltrate.js`**: A specialized, manual script for automating infiltration mini-games. Run it on demand to quickly earn money and faction reputation.
