@@ -1,34 +1,49 @@
 /** @param {NS} ns */
 export async function main(ns) {
-  // A list of hacking programs to create, in order of increasing skill requirement.
-  const programsToCreate = [
-    "BruteSSH.exe",
-    "FTPCrack.exe",
-    "relaySMTP.exe",
-    "HTTPWorm.exe",
-    "SQLInject.exe"
-  ];
+    // KORREKTUR: Wir legen die Anforderungen in einem Objekt ab.
+    const programRequirements = {
+        "BruteSSH.exe": 50,
+        "FTPCrack.exe": 100,
+        "relaySMTP.exe": 250,
+        "HTTPWorm.exe": 500,
+        "SQLInject.exe": 750
+    };
+    const programsToCreate = Object.keys(programRequirements);
 
-  // Loop through the programs to find the next one to create.
-  for (const program of programsToCreate) {
-    // If the program does not exist, we try to create it.
-    if (!ns.fileExists(program, "home")) {
-      const myHackingSkill = ns.getHackingLevel();
-      const requiredSkill = ns.getTrainingSkill(program);
-
-      // Check if the hacking skill is sufficient.
-      if (myHackingSkill >= requiredSkill) {
-        ns.tprint(`SUCCESS: Starting to create ${program}. This will take some time.`);
-        ns.singularity.createProgram(program);
-        // We start the creation and then exit. The orchestrator will check again later.
-        return; 
-      } else {
-        ns.tprint(`SKIPPING: Need hacking skill ${requiredSkill} to create ${program}. Current: ${myHackingSkill}`);
-        // We'll stop here since programs must be created in order.
-        return; 
-      }
+    // NEU: Prüfung, ob Singularity-Funktionen überhaupt verfügbar sind.
+    if (ns.singularity === undefined) {
+        ns.tprint("ERROR: Singularity-Funktionen sind nicht verfügbar. (BN-4 oder 'The Red Pill' benötigt)");
+        return;
     }
-  }
 
-  ns.tprint("All hacking programs have been created!");
+    // NEU: Prüfung, ob du gerade beschäftigt bist.
+    if (ns.singularity.isBusy()) {
+        ns.tprint("INFO: Spieler ist beschäftigt. Programm-Erstellung wird übersprungen.");
+        return;
+    }
+
+    for (const program of programsToCreate) {
+        if (!ns.fileExists(program, "home")) {
+            const myHackingSkill = ns.getHackingLevel();
+            // KORREKTUR: Wir nutzen unser Objekt für die Anforderung.
+            const requiredSkill = programRequirements[program];
+
+            if (myHackingSkill >= requiredSkill) {
+                ns.tprint(`SUCCESS: Starte Erstellung von ${program}.`);
+                // Der Befehl selbst ist korrekt.
+                if (ns.singularity.createProgram(program)) {
+                    ns.tprint(`-> ${program} wird jetzt erstellt. Das Skript beendet sich für's Erste.`);
+                } else {
+                    ns.tprint(`WARNUNG: Erstellung von ${program} fehlgeschlagen (nicht genug Geld?).`);
+                }
+                return; // Beendet sich, damit du während der Erstellung was anderes tun kannst.
+            } else {
+                ns.tprint(`INFO: Nächstes Programm: ${program}. Benötigtes Hacking-Level: ${requiredSkill}. Aktuell: ${myHackingSkill}`);
+                // Wir stoppen hier, da die Reihenfolge wichtig ist.
+                return;
+            }
+        }
+    }
+
+    ns.tprint("SUCCESS: Alle Hacking-Programme wurden bereits erstellt!");
 }

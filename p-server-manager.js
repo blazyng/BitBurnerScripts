@@ -1,66 +1,56 @@
 /** @param {NS} ns */
 export async function main(ns) {
-  // --- USER SETTINGS ---
-  const serverNamePrefix = "TakiNya";
-  const scriptToRun = "hack.js";
+    ns.disableLog("ALL");
+    ns.tprint("INFO: Starte Manager für gekaufte Server.");
 
-  while (true) {
-    const purchasedServers = ns.getPurchasedServers();
+    // --- EINSTELLUNGEN ---
+    const serverNamePrefix = "pserv-";
+    // Wieviel Geld soll immer mindestens übrig bleiben?
+    const geldReserve = 1000000000; // 1 Milliarde als Beispiel
 
-    // PHASE 1: Buy a new server if the limit has not been reached yet.
-    if (purchasedServers.length < ns.getPurchasedServerLimit()) {
-      const money = ns.getServerMoneyAvailable("home");
-      let bestRam = 0;
+    while (true) {
+        const geldVerfuegbar = ns.getServerMoneyAvailable("home") - geldReserve;
+        const pservLimit = ns.getPurchasedServerLimit();
+        const pservs = ns.getPurchasedServers();
 
-      // Find the largest server we can afford.
-      for (let ram = 16; ram <= ns.getPurchasedServerMaxRam(); ram *= 2) {
-        const cost = ns.getPurchasedServerCost(ram);
-        if (money >= cost) {
-          bestRam = ram;
+        // --- Phase 1: Neue Server kaufen, bis das Limit erreicht ist ---
+        if (pservs.length < pservLimit) {
+            let ram = 8; // Starten wir bei 8 GB
+            // Finde die größte RAM-Größe, die wir uns leisten können
+            while (ns.getPurchasedServerCost(ram * 2) < geldVerfuegbar && (ram * 2) <= ns.getPurchasedServerMaxRam()) {
+                ram *= 2;
+            }
+
+            if (ns.getPurchasedServerCost(ram) < geldVerfuegbar) {
+                const hostname = ns.purchaseServer(serverNamePrefix + pservs.length, ram);
+                if (hostname) {
+                    ns.tprint(`SUCCESS: Neuen Server '${hostname}' mit ${ram}GB RAM gekauft.`);
+                }
+            }
         }
-      }
 
-      if (bestRam > 0) {
-        const cost = ns.getPurchasedServerCost(bestRam);
-        const newServerName = ns.purchaseServer(serverNamePrefix, bestRam);
-        ns.tprint(`SUCCESS: Bought new server '${newServerName}' with ${ns.nFormat(bestRam, '0.00a')}GB RAM.`);
-        await ns.scp(scriptToRun, newServerName);
-        ns.tprint(`SUCCESS: Deployed '${scriptToRun}' on '${newServerName}'.`);
-      }
-    } 
-    
-    // PHASE 2: Upgrade a server if the limit has been reached.
-    else {
-      // Find the weakest server to upgrade.
-      const maxServerRam = ns.getPurchasedServerMaxRam();
-      let weakestServer = "";
-      let lowestRam = maxServerRam + 1;
-      
-      for (const server of purchasedServers) {
-        const ram = ns.getServerMaxRam(server);
-        if (ram < lowestRam) {
-          lowestRam = ram;
-          weakestServer = server;
+        // --- Phase 2: Bestehende Server inkrementell aufrüsten ---
+        if (pservs.length === pservLimit) {
+            let schwächsterServer = "";
+            let niedrigsterRam = ns.getPurchasedServerMaxRam() + 1;
+
+            // Finde den Server mit dem wenigsten RAM
+            for (const server of pservs) {
+                const ram = ns.getServerMaxRam(server);
+                if (ram < niedrigsterRam) {
+                    niedrigsterRam = ram;
+                    schwächsterServer = server;
+                }
+            }
+
+            // Versuche, den RAM des schwächsten Servers zu verdoppeln
+            const ramUpgrade = niedrigsterRam * 2;
+            if (ramUpgrade <= ns.getPurchasedServerMaxRam() && ns.getPurchasedServerCost(ramUpgrade) < geldVerfuegbar) {
+                ns.upgradePurchasedServer(schwächsterServer, ramUpgrade);
+                ns.tprint(`SUCCESS: Server '${schwächsterServer}' auf ${ramUpgrade}GB RAM aufgerüstet.`);
+            }
         }
-      }
-
-      // If the weakest server is not yet at the max RAM, delete it and buy a new one.
-      if (weakestServer !== "" && lowestRam < maxServerRam) {
-        const newServerCost = ns.getPurchasedServerCost(maxServerRam);
-
-        if (ns.getServerMoneyAvailable("home") >= newServerCost) {
-          ns.tprint(`UPGRADING: Deleting weakest server '${weakestServer}' with ${ns.nFormat(lowestRam, '00a')}GB RAM.`);
-          ns.killall(weakestServer);
-          ns.deleteServer(weakestServer);
-
-          const newServerName = ns.purchaseServer(serverNamePrefix, maxServerRam);
-          ns.tprint(`SUCCESS: Replaced '${weakestServer}' with '${newServerName}' (${ns.nFormat(maxServerRam, '0.00a')}GB).`);
-          await ns.scp(scriptToRun, newServerName);
-          ns.tprint(`SUCCESS: Deployed '${scriptToRun}' on '${newServerName}'.`);
-        }
-      }
+        
+        await ns.sleep(10000); // Prüfe alle 10 Sekunden
     }
-
-    await ns.sleep(60000); // Check once a minute.
-  }
 }

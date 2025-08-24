@@ -1,90 +1,89 @@
 /** @param {NS} ns */
 export async function main(ns) {
-  // The name of the worker script that will be copied and run.
-  const scriptToRun = "hack.js";
-  const scriptRam = ns.getScriptRam(scriptToRun);
+    ns.disableLog("ALL");
+    ns.tprint("INFO: Starte allmächtigen Hacking-Daemon (Finden, Nuken, HGW)...");
 
-  while (true) {
-    // Phase 1: Scan and filter all hackable servers.
-    // This part now runs in every loop, ensuring the script is always up-to-date.
-    const allServers = await findAllServers(ns);
+    const weakenScript = "weaken-worker.js";
+    const growScript = "grow-worker.js";
+    const hackScript = "hack-worker.js";
 
-    // Filter out 'home' and all purchased servers.
-    let targetServers = allServers.filter(server => {
-      return server !== "home" && !ns.getServer(server).purchasedByPlayer;
-    });
+    // Eine Liste der Port-Öffner-Programme
+    const portOpeners = [
+        { name: "BruteSSH.exe", open: ns.brutessh },
+        { name: "FTPCrack.exe", open: ns.ftpcrack },
+        { name: "relaySMTP.exe", open: ns.relaysmtp },
+        { name: "HTTPWorm.exe", open: ns.httpworm },
+        { name: "SQLInject.exe", open: ns.sqlinject }
+    ];
 
-    // We must filter the target servers to only include those we have root access to.
-    targetServers = targetServers.filter(server => ns.hasRootAccess(server));
+    while (true) {
+        const allServers = getAllServers(ns);
+        const hackerServers = allServers.filter(s => ns.hasRootAccess(s) && ns.getServerMaxRam(s) > 0);
 
-    // We find all servers that can be used to run the hacking script.
-    const hackerServers = allServers.filter(server => {
-      return ns.hasRootAccess(server) && ns.getServerMaxRam(server) > 0;
-    });
-    
-    // Phase 2: Deploy the worker script to all hacker servers.
-    if (!ns.fileExists(scriptToRun, "home")) {
-      ns.tprint(`ERROR: '${scriptToRun}' not found on 'home'. Cannot deploy.`);
-      // We will pause here until the file is created.
-      await ns.sleep(60000);
-      continue;
-    }
-    for (const server of hackerServers) {
-      if (!ns.fileExists(scriptToRun, server)) {
-        await ns.scp(scriptToRun, server);
-      }
-    }
+        for (const target of allServers) {
+            if (ns.getServer(target).purchasedByPlayer || target === "home") continue;
 
-    // Phase 3: Start the hacking daemon.
-    let i = 0; // Counter for target rotation.
-    if (targetServers.length === 0) {
-      ns.tprint("No hackable targets available. Pausing for 5 minutes.");
-      await ns.sleep(300000);
-      continue;
-    }
+            // --- NEUER TEIL: VERSUCHE, ROOT ZU ERLANGEN ---
+            if (!ns.hasRootAccess(target)) {
+                let openPorts = 0;
+                for (const opener of portOpeners) {
+                    if (ns.fileExists(opener.name, "home")) {
+                        opener.open(target);
+                        openPorts++;
+                    }
+                }
 
-    // The logic to deploy hacking scripts.
-    const target = targetServers[i % targetServers.length];
+                if (openPorts >= ns.getServerNumPortsRequired(target) && ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(target)) {
+                    ns.nuke(target);
+                    ns.tprint(`SUCCESS: Root-Zugang auf ${target} erlangt!`);
+                }
+            }
+            
+            // --- HGW-LOGIK (nur wenn wir Root-Zugang haben) ---
+            if (ns.hasRootAccess(target) && ns.getServerMaxMoney(target) > 0) {
+                const minSecurity = ns.getServerMinSecurityLevel(target);
+                const maxMoney = ns.getServerMaxMoney(target);
 
-    for (const hacker of hackerServers) {
-      if (ns.getServerMaxRam(hacker) > ns.getServerUsedRam(hacker)) {
-        const availableRam = ns.getServerMaxRam(hacker) - ns.getServerUsedRam(hacker);
-        const threads = Math.floor(availableRam / scriptRam);
+                // Entscheide, was zu tun ist...
+                let scriptToRun;
+                if (ns.getServerSecurityLevel(target) > minSecurity + 5) {
+                    scriptToRun = weakenScript;
+                } else if (ns.getServerMoneyAvailable(target) < maxMoney * 0.8) {
+                    scriptToRun = growScript;
+                } else {
+                    scriptToRun = hackScript;
+                }
 
-        if (threads > 0) {
-          ns.exec(scriptToRun, hacker, threads, target);
+                // ...und verteile die Aufgabe
+                for (const hacker of hackerServers) {
+                    // Diese Logik kann man noch verfeinern, aber als Basis ist sie gut
+                    const scriptRam = ns.getScriptRam(scriptToRun, hacker);
+                    const availableRam = ns.getServerMaxRam(hacker) - ns.getServerUsedRam(hacker);
+                    const threads = Math.floor(availableRam / scriptRam);
+                    if (threads > 0) {
+                        await ns.scp([weakenScript, growScript, hackScript], hacker);
+                        ns.exec(scriptToRun, hacker, threads, target);
+                    }
+                }
+            }
         }
-      }
+        await ns.sleep(10000); // Warte 10 Sekunden vor dem nächsten kompletten Durchlauf
     }
-
-    i++;
-    await ns.sleep(10000);
-  }
 }
 
-/**
- * Helper function to find all servers in the network.
- * @param {NS} ns
- * @returns {Array<string>} An array of all server hostnames.
- */
-async function findAllServers(ns) {
-  const visited = new Set();
-  const queue = ["home"];
-  const servers = [];
-  
-  while (queue.length > 0) {
-    const server = queue.shift();
-    if (visited.has(server)) continue;
-    visited.add(server);
-    
-    servers.push(server);
-    
-    const connectedServers = ns.scan(server);
-    for (const connectedServer of connectedServers) {
-      if (!visited.has(connectedServer)) {
-        queue.push(connectedServer);
-      }
+// Die bekannte Funktion zum Scannen aller Server
+function getAllServers(ns) {
+    const visited = new Set(["home"]);
+    const queue = ["home"];
+    while (queue.length > 0) {
+        const server = queue.shift();
+        const connectedServers = ns.scan(server);
+        for (const connectedServer of connectedServers) {
+            if (!visited.has(connectedServer)) {
+                visited.add(connectedServer);
+                queue.push(connectedServer);
+            }
+        }
     }
-  }
-  return servers;
+    return [...visited];
 }

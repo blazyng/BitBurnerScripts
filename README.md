@@ -1,37 +1,36 @@
 # Bitburner Automation Suite
 
-A collection of scripts designed to automate core functionalities of the game Bitburner. This suite allows for hands-free progression, from network expansion to financial management, all controlled by a single orchestrator.
+A collection of autonomous daemon scripts designed to automate the core functionalities of Bitburner. This suite allows for hands-free progression after a single launch command, covering network penetration, hacking economy, and financial management.
 
 ## How to Use
 
-The entire system is designed to be started by running just one script.
+The entire system is managed by autonomous daemons that are launched once.
 
-1.  Ensure all `.js` files are in your home directory.
-2.  From your home terminal, simply run the master orchestrator:
-
+1.  Ensure all `.js` files (the manager/daemon scripts and their workers) are on your **home** server.
+2.  **After a reset (new BitNode):** Manually run any one-time utility scripts needed.
     ```sh
-    run orechesterUwu.js
+    run autoCreateProgramms.js
+    ```
+3.  **To start the automation:** Run the simple launcher script. It will start all essential daemons if they aren't already running and then exit immediately to save RAM.
+    ```sh
+    run start.js
     ```
 
-The `orechesterUwu.js` script will then handle the execution and management of all other scripts in the correct order.
+From this point on, the daemons will manage your entire operation in the background.
 
 ## Script Breakdown
 
-### 1. The Orchestrator
-- **`orechesterUwu.js`**: The central hub and brain of the system. It runs in a loop, periodically starting and refreshing all other daemons to ensure your network and economy are always optimized.
+### 1. Core System
+- **`start.js`**: A lightweight launcher. Its only job is to start the main daemons listed below. It does not run continuously.
+- **`demon.js`**: The heart of the hacking operation. This all-in-one daemon perpetually scans the network, gains root access on new servers (Nuking), and intelligently deploys the simple worker scripts based on the Hack-Grow-Weaken (HGW) strategy to maximize profits.
+- **Worker Scripts** (`hack-worker.js`, `grow-worker.js`, `weaken-worker.js`): Three single-purpose, lightweight scripts that are controlled by `demon.js`. They execute one task and then terminate, ensuring maximum RAM efficiency.
 
-### 2. Network Hacking
-- **`scanAndNuke.js`**: The network expansion tool. It scans the entire network, opens ports using available `.exe` files, and gains root access on all hackable servers.
-- **`demon.js`**: The hacking manager. It deploys the `hack.js` worker script to all servers with available RAM to perform money-making operations. **Now uses a safer target list by filtering out your home and purchased servers.**
-- **`hack.js`**: The worker script. This is the core hacking engine that weakens, grows, and hacks a single server. It is run in parallel by `demon.js` across your network.
-- **`hackWithoutExternalServers.js`**: A standalone script for hacking from your home server only. It can be used as a simple backup or early-game hacker.
+### 2. Economic Daemons
+- **`hacknet-manager.js`**: An autonomous manager that uses a Return-On-Investment (ROI) strategy to decide on the most profitable Hacknet upgrade (new node, level, RAM, or core) and executes it.
+- **`p-server-manager.js`**: Manages your fleet of purchased servers. It automatically buys new servers and incrementally upgrades the weakest ones to continuously improve your network's RAM capacity.
+- **`stockMarket.js`**: A fully automated stock trading bot with a target-value feature. Once its portfolio value reaches a user-defined target, it liquidates all assets and shuts down.
+- **`reputation-manager.js`**: A background daemon that automates faction tasks. It automatically joins factions and works for them to grind reputation, focusing on unlocking the next available Augmentations.
 
-### 3. Economic Automation
-- **`hacknet-manager.js`**: A smart daemon that continuously calculates the best investment (new node vs. upgrade) for your Hacknet network and executes it.
-- **`p-server-manager.js`**: **A daemon for managing private servers. It buys new servers when possible and automatically replaces old, weak servers with new, more powerful ones.**
-- **`stockMarket.js`**: A two-phase stock market automation tool. It first earns money with a simple strategy, buys the necessary API, and then switches to an advanced, highly profitable trading strategy.
-
-### 4. Utility Scripts
-- **`autoCreateProgramms.js`**: A utility script that checks your hacking skill and automatically starts creating the required `.exe` files in the correct order.
-- **`installBackdoors.js`**: A new script that identifies and manages backdoors on vulnerable servers. It provides clear instructions for manual installation when the automated function is not yet available.
-- **`autoInfiltrate.js`**: A specialized, manual script for automating infiltration mini-games. Run it on demand to quickly earn money and faction reputation.
+### 3. Utility Scripts
+- **`autoCreateProgramms.js`**: A one-time utility script to run after a reset. It checks your hacking skill and automatically creates the required `.exe` files in the correct order.
+- **`autoInfiltrate.js`**: A specialized script to run on demand for automating infiltration mini-games, providing a quick boost to money and faction reputation.
