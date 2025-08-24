@@ -1,5 +1,8 @@
 /** @param {NS> ns */
 export async function main(ns) {
+  // We'll only spend up to 20% of our total money on Hacknet nodes.
+  const maxMoneyRatio = 0.20; 
+
   while (true) {
     let bestInvestment = "none";
     let bestInvestmentRatio = 0;
@@ -7,7 +10,9 @@ export async function main(ns) {
     // Check cost-efficiency for purchasing a new node.
     const purchaseCost = ns.hacknet.getPurchaseNodeCost();
     const purchaseProduction = ns.hacknet.getProductionForNode(1, 1, 1);
-    if (purchaseCost > 0) {
+    
+    // Only invest if we have a reasonable amount of money and are below our investment threshold.
+    if (purchaseCost > 0 && ns.getServerMoneyAvailable("home") * maxMoneyRatio > purchaseCost) {
       const purchaseRatio = purchaseProduction / purchaseCost;
       if (purchaseRatio > bestInvestmentRatio) {
         bestInvestmentRatio = purchaseRatio;
@@ -23,7 +28,7 @@ export async function main(ns) {
       const levelCost = ns.hacknet.getLevelUpgradeCost(i, 1);
       const levelGain = ns.hacknet.getProductionForNode(stats.level + 1, stats.ram, stats.cores) - stats.production;
       const levelRatio = levelGain / levelCost;
-      if (levelRatio > bestInvestmentRatio) {
+      if (levelRatio > bestInvestmentRatio && ns.getServerMoneyAvailable("home") * maxMoneyRatio > levelCost) {
         bestInvestmentRatio = levelRatio;
         bestInvestment = `level_${i}`;
       }
@@ -32,7 +37,7 @@ export async function main(ns) {
       const ramCost = ns.hacknet.getRamUpgradeCost(i, 1);
       const ramGain = ns.hacknet.getProductionForNode(stats.level, stats.ram + 1, stats.cores) - stats.production;
       const ramRatio = ramGain / ramCost;
-      if (ramRatio > bestInvestmentRatio) {
+      if (ramRatio > bestInvestmentRatio && ns.getServerMoneyAvailable("home") * maxMoneyRatio > ramCost) {
         bestInvestmentRatio = ramRatio;
         bestInvestment = `ram_${i}`;
       }
@@ -41,7 +46,7 @@ export async function main(ns) {
       const coreCost = ns.hacknet.getCoreUpgradeCost(i, 1);
       const coreGain = ns.hacknet.getProductionForNode(stats.level, stats.ram, stats.cores + 1) - stats.production;
       const coreRatio = coreGain / coreCost;
-      if (coreRatio > bestInvestmentRatio) {
+      if (coreRatio > bestInvestmentRatio && ns.getServerMoneyAvailable("home") * maxMoneyRatio > coreCost) {
         bestInvestmentRatio = coreRatio;
         bestInvestment = `core_${i}`;
       }

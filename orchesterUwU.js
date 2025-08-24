@@ -26,6 +26,7 @@ export async function main(ns) {
   ns.run("demon.js");
   ns.run("hacknet-manager.js");
   ns.run("stockMarket.js");
+  ns.run("p-server-manager.js");
   
   ns.tprint("All core daemons started. The orchestrator will now wait.");
   ns.tprint("Run this script again periodically to refresh the network.");
