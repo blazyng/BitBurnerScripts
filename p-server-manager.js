@@ -4,7 +4,7 @@ export async function main(ns) {
     ns.tprint("INFO: Starting purchased server manager.");
 
     // --- SETTINGS ---
-    const serverNamePrefix = "pserv-";
+    const serverNamePrefix = "ChisaTaki";
     // How much money should always be kept in reserve?
     const cashReserve = 1_000_000_000; // e.g., 1 billion
 
