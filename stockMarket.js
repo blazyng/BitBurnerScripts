@@ -1,76 +1,78 @@
 /** @param {NS} ns */
 export async function main(ns) {
-  // --- USER SETTINGS ---
-  // A list of symbols for early-game trading.
-  const earlyGameSymbols = ["NMG", "JGN", "CTK", "VITA", "OMGA", "FNS"]; 
-  // Percentage of total money to invest in one stock.
-  const investRatio = 0.15;
+    // --- EINSTELLUNGEN ---
+    const investitionsLimit = 0.25; 
+    const kaufSchwelle = 0.6;
+    const verkaufSchwelle = 0.55;
+    const geldReserve = 1000000; 
+    const transaktionsgebuehr = 100000;
 
-  while (true) {
-    // Phase 0: Check if we can even access the stock market.
-    try {
-        ns.stock.getSymbols();
-    } catch (e) {
-        ns.tprint("ERROR: Not enough privileges to access the stock market. Check your factions for 'TIX API Access'.");
-        const tixApiCost = 15000000000; // Hardcoded cost to show the player what to aim for.
-        const myMoney = ns.getServerMoneyAvailable("home");
-        ns.tprint(`Money needed for TIX API Access: ${ns.formatNumber(tixApiCost)}. Current money: ${ns.formatNumber(myMoney)}`);
-        await ns.sleep(60000); // Wait 1 minute before checking again.
-        continue;
+    ns.disableLog("ALL");
+
+    while (true) {
+        if (!ns.stock.has4SData()) {
+            const apiKosten = ns.stock.get4SDataCost(); // Annahme, dass diese Funktion existiert
+            ns.print(`INFO: Warte auf Kauf der 4S Market Data. Benötigt: ${ns.formatNumber(apiKosten)}`);
+            if (ns.getServerMoneyAvailable("home") > apiKsten) {
+                if (ns.stock.purchase4SMarketData()) {
+                    ns.print("ERFOLG: 4S Market Data gekauft!");
+                }
+            }
+            await ns.sleep(60000); 
+        } else {
+            const alleSymbole = ns.stock.getSymbols();
+
+            // --- Verkaufsphase ---
+            for (const sym of alleSymbole) {
+                const [anteile] = ns.stock.getPosition(sym);
+                if (anteile > 0) {
+                    let prognose = 0;
+                    try {
+                        prognose = ns.stock.getForecast(sym);
+                    } catch (e) {
+                        ns.print(`WARNUNG: Prognose für ${sym} fehlgeschlagen. Überspringe...`);
+                        continue;
+                    }
+                    
+                    if (prognose < verkaufSchwelle) {
+                        // KORREKTUR laut Doku: sellStock
+                        const verkaufsPreis = ns.stock.sellStock(sym, anteile);
+                        if (verkaufsPreis > 0) {
+                            ns.print(`VERKAUF: ${ns.formatNumber(anteile)}x ${sym} für ${ns.formatNumber(anteile * verkaufsPreis)}`);
+                        }
+                    }
+                }
+            }
+
+            // --- Kaufphase ---
+            let verfuegbaresGeld = ns.getServerMoneyAvailable("home") - geldReserve;
+            let investitionsBudget = verfuegbaresGeld * investitionsLimit;
+
+            for (const sym of alleSymbole) {
+                let prognose = 0;
+                try {
+                    prognose = ns.stock.getForecast(sym);
+                } catch (e) {
+                    ns.print(`WARNUNG: Prognose für ${sym} fehlgeschlagen. Überspringe...`);
+                    continue;
+                }
+
+                if (prognose >= kaufSchwelle) {
+                    const aktienPreis = ns.stock.getAskPrice(sym);
+                    let maxKaufbareAnteile = Math.floor((investitionsBudget - transaktionsgebuehr) / aktienPreis);
+
+                    if (maxKaufbareAnteile * aktienPreis > 1000000) {
+                        // KORREKTUR laut Doku: buyStock
+                        const tatsaechlicherKauf = ns.stock.buyStock(sym, maxKaufbareAnteile);
+                        if (tatsaechlicherKauf > 0) {
+                            ns.print(`KAUF: ${ns.formatNumber(tatsaechlicherKauf)}x ${sym} für ${ns.formatNumber(tatsaechlicherKauf * aktienPreis)}`);
+                            investitionsBudget -= (tatsaechlicherKauf * aktienPreis) + transaktionsgebuehr;
+                        }
+                    }
+                }
+            }
+            
+            await ns.stock.nextUpdate();
+        }
     }
-
-    // Check if we have the 4S data API.
-    const has4SData = ns.stock.has4SDataTixApi();
-
-    // Phase 1: Simple Trading (before 4S Data API is purchased)
-    if (!has4SData) {
-      const apiCost = ns.stock.get4SDataTixApiCost();
-      if (ns.getServerMoneyAvailable("home") >= apiCost) {
-        ns.tprint("Money is sufficient! Buying 4S Market Data TIX API...");
-        ns.stock.purchase4SMarketDataTixApi();
-        continue;
-      }
-
-      for (const sym of earlyGameSymbols) {
-        const [ownedShares, avgPrice] = ns.stock.getPosition(sym);
-        const currentPrice = ns.stock.getBidPrice(sym);
-
-        if (ownedShares === 0) {
-          const moneyAvailable = ns.getServerMoneyAvailable("home");
-          const sharesToBuy = Math.floor((moneyAvailable * 0.10) / ns.stock.getAskPrice(sym));
-          if (sharesToBuy > 0) {
-            ns.stock.buy(sym, sharesToBuy);
-          }
-        } 
-        else if (currentPrice > avgPrice * 1.05) {
-          ns.stock.sell(sym, ownedShares);
-        }
-      }
-    } 
-    // Phase 2: Advanced Trading (after 4S Data API is purchased)
-    else {
-      const allSymbols = ns.stock.getSymbols();
-      const buyThreshold = 0.65;
-      const sellThreshold = 0.55;
-
-      for (const sym of allSymbols) {
-        const forecast = ns.stock.getForecast(sym);
-        const [ownedShares] = ns.stock.getPosition(sym);
-        
-        if (forecast >= buyThreshold && ownedShares === 0) {
-          const moneyAvailable = ns.getServerMoneyAvailable("home");
-          const sharesToBuy = Math.floor((moneyAvailable * investRatio) / ns.stock.getAskPrice(sym));
-          if (sharesToBuy > 0) {
-            ns.stock.buy(sym, sharesToBuy);
-          }
-        }
-        
-        if (forecast <= sellThreshold && ownedShares > 0) {
-          ns.stock.sell(sym, ownedShares);
-        }
-      }
-    }
-
-    await ns.sleep(6000); 
-  }
 }
