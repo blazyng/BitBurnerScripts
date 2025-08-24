@@ -32,4 +32,4 @@ The `orechesterUwu.js` script will then handle the execution and management of a
 
 ### 4. Utility Scripts
 - **`autoCreateProgramms.js`**: A utility script that checks your hacking skill and automatically starts creating the required `.exe` files in the correct order.
-- **`autoInfiltrate.js`**: A specialized, manual script for automating infiltration mini-games. Run it on demand to quickly earn money and faction reputation.
+- **`autoInfiltrate.js`**: A specialized, manual script for automating infiltration mini-games. Run it on demand to quickly earn money and faction reputation.git 
