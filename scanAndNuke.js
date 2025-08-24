@@ -1,80 +1,79 @@
 /** @param {NS} ns */
 export async function main(ns) {
-  // A list of hacking programs in the order they are generally acquired.
-  const hackingPrograms = [
-    "BruteSSH.exe",
-    "FTPCrack.exe",
-    "relaySMTP.exe",
-    "HTTPWorm.exe",
-    "SQLInject.exe"
-  ];
-  
-  const purchasedPrograms = hackingPrograms.filter(program => ns.fileExists(program, "home"));
-  const numPrograms = purchasedPrograms.length;
-  
+  ns.tprint("INFO: Starting continuous network scanner and nuker daemon.");
+
+  while (true) {
+    const serversToHack = await findAllServersToHack(ns);
+    const hackingPrograms = [
+      "BruteSSH.exe",
+      "FTPCrack.exe",
+      "relaySMTP.exe",
+      "HTTPWorm.exe",
+      "SQLInject.exe"
+    ];
+
+    for (const server of serversToHack) {
+      const serverObj = ns.getServer(server);
+
+      // We need to have enough hacking skill to hack the server.
+      if (ns.getHackingLevel() >= serverObj.requiredHackingSkill) {
+
+        // Check which hacking programs are available and open ports.
+        let portsOpened = 0;
+        if (ns.fileExists(hackingPrograms[0], "home")) {
+          ns.brutessh(server);
+          portsOpened++;
+        }
+        if (ns.fileExists(hackingPrograms[1], "home")) {
+          ns.ftpcrack(server);
+          portsOpened++;
+        }
+        if (ns.fileExists(hackingPrograms[2], "home")) {
+          ns.relaysmtp(server);
+          portsOpened++;
+        }
+        if (ns.fileExists(hackingPrograms[3], "home")) {
+          ns.httpworm(server);
+          portsOpened++;
+        }
+        if (ns.fileExists(hackingPrograms[4], "home")) {
+          ns.sqlinject(server);
+          portsOpened++;
+        }
+
+        // Try to gain root access.
+        if (portsOpened >= serverObj.numOpenPortsRequired) {
+          ns.nuke(server);
+          ns.tprint(`SUCCESS: Nuked and gained root access on ${server}.`);
+        }
+      }
+    }
+    await ns.sleep(120000); // Wait 2 minutes (120000 ms) before the next scan.
+  }
+}
+
+/**
+ * Helper function to find all servers that we haven't rooted yet.
+ * @param {NS} ns
+ * @returns {Array<string>} An array of server hostnames without root access.
+ */
+async function findAllServersToHack(ns) {
   const visited = new Set();
   const queue = ["home"];
-  
-  ns.tprint(`Current Hacking Tools: ${purchasedPrograms.join(", ")}`);
+  const servers = [];
   
   while (queue.length > 0) {
     const server = queue.shift();
-    
-    if (visited.has(server)) {
+    if (visited.has(server) || ns.hasRootAccess(server)) {
       continue;
     }
     visited.add(server);
     
-    // Check if the server has root access.
-    if (ns.hasRootAccess(server)) {
-      // Check if a backdoor needs to be installed.
-      if (!ns.getServer(server).backdoorInstalled) {
-        ns.tprint(`--- MANUALLY INSTALL BACKDOOR ---`);
-        ns.tprint(`HINT: You can install a backdoor on ${server}.`);
-        ns.tprint(`1. Connect: connect ${server}`);
-        ns.tprint(`2. Install: backdoor`);
-        ns.tprint(`3. Return: connect home`);
-        ns.tprint(`---------------------------------`);
-      }
-    } else {
-      const requiredSkill = ns.getServerRequiredHackingLevel(server);
-      const requiredPorts = ns.getServerNumPortsRequired(server);
-      const myHackingSkill = ns.getHackingLevel();
-      
-      // Decide if we can hack this server.
-      if (myHackingSkill < requiredSkill) {
-        ns.tprint(`SKIPPING: ${server} - Hacking skill too low. Req: ${requiredSkill}, Current: ${myHackingSkill}`);
-      } else if (requiredPorts > numPrograms) {
-        ns.tprint(`SKIPPING: ${server} - Not enough hacking programs. Req: ${requiredPorts}, Have: ${numPrograms}`);
-      } else {
-        // Run all available port-opening programs.
-        for (const program of purchasedPrograms) {
-          switch (program) {
-            case "BruteSSH.exe":
-              ns.brutessh(server);
-              break;
-            case "FTPCrack.exe":
-              ns.ftpcrack(server);
-              break;
-            case "relaySMTP.exe":
-              ns.relaysmtp(server);
-              break;
-            case "HTTPWorm.exe":
-              ns.httpworm(server);
-              break;
-            case "SQLInject.exe":
-              ns.sqlinject(server);
-              break;
-          }
-        }
-        
-        ns.nuke(server);
-        ns.tprint(`SUCCESS: ${server} was hacked and taken over with Nuke.exe!`);
-        ns.tprint(`HINT: You can now install a backdoor on ${server}.`);
-      }
+    // We only care about servers that are not home or purchased.
+    if (server !== "home" && !ns.getServer(server).purchasedByPlayer) {
+      servers.push(server);
     }
     
-    // Add connected servers to the queue for scanning.
     const connectedServers = ns.scan(server);
     for (const connectedServer of connectedServers) {
       if (!visited.has(connectedServer)) {
@@ -82,4 +81,5 @@ export async function main(ns) {
       }
     }
   }
+  return servers;
 }
