@@ -4,43 +4,46 @@ export async function main(ns) {
   const scriptToRun = "hack.js";
   const scriptRam = ns.getScriptRam(scriptToRun);
 
-  // Phase 1: Scan and filter all hackable servers.
-  const allServers = await findAllServers(ns);
-
-  // Filter out 'home' and all purchased servers.
-  let targetServers = allServers.filter(server => {
-    return server !== "home" && !ns.getServer(server).purchasedByPlayer;
-  });
-
-  // We must filter the target servers to only include those we have root access to.
-  targetServers = targetServers.filter(server => ns.hasRootAccess(server));
-
-  // We find all servers that can be used to run the hacking script.
-  const hackerServers = allServers.filter(server => {
-    return ns.hasRootAccess(server) && ns.getServerMaxRam(server) > 0;
-  });
-  
-  // Phase 2: Deploy the worker script to all hacker servers.
-  ns.tprint("Deploying worker script to all hacker servers...");
-  if (!ns.fileExists(scriptToRun, "home")) {
-    ns.tprint(`ERROR: '${scriptToRun}' not found on 'home'. Cannot deploy.`);
-    return;
-  }
-  for (const server of hackerServers) {
-    await ns.scp(scriptToRun, server);
-  }
-
-  // Phase 3: Start the hacking daemon.
-  let i = 0; // Counter for target rotation.
-  ns.tprint("Hacking daemon started. Deploying hacking scripts.");
-
   while (true) {
+    // Phase 1: Scan and filter all hackable servers.
+    // This part now runs in every loop, ensuring the script is always up-to-date.
+    const allServers = await findAllServers(ns);
+
+    // Filter out 'home' and all purchased servers.
+    let targetServers = allServers.filter(server => {
+      return server !== "home" && !ns.getServer(server).purchasedByPlayer;
+    });
+
+    // We must filter the target servers to only include those we have root access to.
+    targetServers = targetServers.filter(server => ns.hasRootAccess(server));
+
+    // We find all servers that can be used to run the hacking script.
+    const hackerServers = allServers.filter(server => {
+      return ns.hasRootAccess(server) && ns.getServerMaxRam(server) > 0;
+    });
+    
+    // Phase 2: Deploy the worker script to all hacker servers.
+    if (!ns.fileExists(scriptToRun, "home")) {
+      ns.tprint(`ERROR: '${scriptToRun}' not found on 'home'. Cannot deploy.`);
+      // We will pause here until the file is created.
+      await ns.sleep(60000);
+      continue;
+    }
+    for (const server of hackerServers) {
+      if (!ns.fileExists(scriptToRun, server)) {
+        await ns.scp(scriptToRun, server);
+      }
+    }
+
+    // Phase 3: Start the hacking daemon.
+    let i = 0; // Counter for target rotation.
     if (targetServers.length === 0) {
       ns.tprint("No hackable targets available. Pausing for 5 minutes.");
       await ns.sleep(300000);
       continue;
     }
 
+    // The logic to deploy hacking scripts.
     const target = targetServers[i % targetServers.length];
 
     for (const hacker of hackerServers) {
