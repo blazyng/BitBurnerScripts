@@ -25,7 +25,6 @@ export async function main(ns) {
   ns.tprint("Phase 4: Starting core daemons...");
   ns.run("demon.js");
   ns.run("hacknet-manager.js");
-  ns.run("hackWithoutExternalServers.js");
   ns.run("stockMarket.js");
   
   ns.tprint("All core daemons started. The orchestrator will now wait.");
