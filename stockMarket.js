@@ -1,12 +1,12 @@
 /** @param {NS} ns */
 export async function main(ns) {
-    // --- NEUE, VERBESSERTE EINSTELLUNGEN ---
-    // Wieviel Prozent deines Geldes soll immer als sichere Reserve bleiben? (0.5 = 50%)
-    const behalteProzent = 0.5; 
-    // Wieviel Prozent VOM REST soll pro Zyklus maximal investiert werden? (0.25 = 25%)
-    const investiereProzent = 0.25;
+    // --- DEINE ZIEL-EINSTELLUNG ---
+    // Bei welchem Gesamtwert (Bargeld + Aktienwert) soll das Skript stoppen?
+    const zielwert = 20000000000; // Beispiel: 20 Milliarden
 
-    // --- Handelsschwellen (kannst du so lassen) ---
+    // --- Handels-Einstellungen (wie im vorigen Skript) ---
+    const geldReserve = 1000000;      // Feste Reserve für den Handel
+    const investitionsLimit = 0.25;   // Wieviel vom verfügbaren Geld pro Zyklus investieren?
     const kaufSchwelle = 0.6;
     const verkaufSchwelle = 0.55;
     const transaktionsgebuehr = 100000;
@@ -14,62 +14,70 @@ export async function main(ns) {
     ns.disableLog("ALL");
 
     while (true) {
-        if (!ns.stock.has4SData()) {
-            const apiKosten = 25000000000; // 25 Mrd. für die 4S API
-            ns.print(`INFO: Warte auf Kauf der 4S Market Data. Benötigt: ${ns.formatNumber(apiKosten)}`);
-            if (ns.getServerMoneyAvailable("home") > apiKosten) {
-                if (ns.stock.purchase4SMarketData()) {
-                    ns.print("ERFOLG: 4S Market Data gekauft!");
-                }
+        // --- 1. GESAMTWERT BERECHNEN ---
+        const alleSymbole = ns.stock.getSymbols();
+        let aktuellesGeld = ns.getServerMoneyAvailable("home");
+        let aktienwert = 0;
+        for (const sym of alleSymbole) {
+            const [anteile] = ns.stock.getPosition(sym);
+            if (anteile > 0) {
+                aktienwert += anteile * ns.stock.getBidPrice(sym);
             }
-            await ns.sleep(60000); 
-        } else {
-            const alleSymbole = ns.stock.getSymbols();
+        }
+        const gesamtwert = aktuellesGeld + aktienwert;
 
-            // --- Verkaufsphase (unverändert) ---
+        // Info-Ausgabe für dich, damit du den Fortschritt siehst
+        ns.print(`INFO: Gesamtwert: ${ns.formatNumber(gesamtwert)} / ${ns.formatNumber(zielwert)}`);
+
+        // --- 2. ZIELWERT PRÜFEN ---
+        if (gesamtwert >= zielwert) {
+            ns.tprint(`SUCCESS: Zielwert von ${ns.formatNumber(zielwert)} erreicht!`);
+            ns.tprint("Verkaufe alle Positionen und beende das Skript...");
+
             for (const sym of alleSymbole) {
                 const [anteile] = ns.stock.getPosition(sym);
                 if (anteile > 0) {
-                    let prognose = 0;
-                    try { prognose = ns.stock.getForecast(sym); } catch (e) { continue; }
-                    
-                    if (prognose < verkaufSchwelle) {
-                        const verkaufsPreis = ns.stock.sellStock(sym, anteile);
-                        if (verkaufsPreis > 0) {
-                            ns.print(`VERKAUF: ${ns.formatNumber(anteile)}x ${sym} für ${ns.formatNumber(anteile * verkaufsPreis)}`);
-                        }
-                    }
+                    const verkaufsPreis = ns.stock.sellStock(sym, anteile);
+                    ns.tprint(`-> Verkauft: ${ns.formatNumber(anteile)}x ${sym} für ${ns.formatNumber(anteile * verkaufsPreis)}`);
                 }
             }
+            ns.tprint("Alle Aktien verkauft. Skript wird beendet.");
+            return; // Beendet das Skript vollständig
+        }
 
-            // --- Kaufphase (mit neuer Logik) ---
-            // NEU: Berechne die Reserve und das Budget dynamisch in jeder Runde
-            const aktuellesGeld = ns.getServerMoneyAvailable("home");
-            const geldReserve = aktuellesGeld * behalteProzent;
-            const geldFuerInvestitionen = aktuellesGeld - geldReserve;
-            let investitionsBudget = geldFuerInvestitionen * investiereProzent;
+        // --- 3. NORMALE HANDELSLOGIK (WENN ZIEL NICHT ERREICHT) ---
+        // (Verkaufs- & Kaufphasen wie zuvor)
 
-            for (const sym of alleSymbole) {
+        // Verkaufsphase
+        for (const sym of alleSymbole) {
+            const [anteile] = ns.stock.getPosition(sym);
+            if (anteile > 0) {
                 let prognose = 0;
                 try { prognose = ns.stock.getForecast(sym); } catch (e) { continue; }
+                if (prognose < verkaufSchwelle) {
+                    ns.stock.sellStock(sym, anteile);
+                }
+            }
+        }
 
-                if (prognose >= kaufSchwelle) {
-                    const aktienPreis = ns.stock.getAskPrice(sym);
-                    // Berechne max. Anteile basierend auf dem Budget für DIESEN ZYKLUS
-                    let maxKaufbareAnteile = Math.floor((investitionsBudget - transaktionsgebuehr) / aktienPreis);
-
-                    if (maxKaufbareAnteile * aktienPreis > 1000000) { // Mindestinvestment von 1 Mio.
-                        const tatsaechlicherKauf = ns.stock.buyStock(sym, maxKaufbareAnteile);
-                        if (tatsaechlicherKauf > 0) {
-                            ns.print(`KAUF: ${ns.formatNumber(tatsaechlicherKauf)}x ${sym} für ${ns.formatNumber(tatsaechlicherKauf * aktienPreis)}`);
-                            // Reduziere das Budget für diesen Zyklus, um nicht zu viel auszugeben
-                            investitionsBudget -= (tatsaechlicherKauf * aktienPreis) + transaktionsgebuehr;
-                        }
+        // Kaufphase
+        let verfuegbaresGeld = ns.getServerMoneyAvailable("home") - geldReserve;
+        let investitionsBudget = verfuegbaresGeld * investitionsLimit;
+        for (const sym of alleSymbole) {
+            let prognose = 0;
+            try { prognose = ns.stock.getForecast(sym); } catch (e) { continue; }
+            if (prognose >= kaufSchwelle) {
+                const aktienPreis = ns.stock.getAskPrice(sym);
+                let maxKaufbareAnteile = Math.floor((investitionsBudget - transaktionsgebuehr) / aktienPreis);
+                if (maxKaufbareAnteile * aktienPreis > 1000000) {
+                    const kauf = ns.stock.buyStock(sym, maxKaufbareAnteile);
+                    if (kauf > 0) {
+                         investitionsBudget -= (kauf * aktienPreis) + transaktionsgebuehr;
                     }
                 }
             }
-            
-            await ns.stock.nextUpdate();
         }
+        
+        await ns.stock.nextUpdate();
     }
 }
