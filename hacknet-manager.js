@@ -1,77 +1,69 @@
-/** @param {NS> ns */
+/** @param {NS} ns */
 export async function main(ns) {
   // We'll only spend up to 20% of our total money on Hacknet nodes.
   const maxMoneyRatio = 0.20; 
 
   while (true) {
+    let lowestCost = Infinity;
     let bestInvestment = "none";
-    let bestInvestmentRatio = 0;
     
-    // Check cost-efficiency for purchasing a new node.
+    // Check cost for a new node
     const purchaseCost = ns.hacknet.getPurchaseNodeCost();
-    const purchaseProduction = ns.hacknet.getProductionForNode(1, 1, 1);
+    const moneyAvailable = ns.getServerMoneyAvailable("home");
     
     // Only invest if we have a reasonable amount of money and are below our investment threshold.
-    if (purchaseCost > 0 && ns.getServerMoneyAvailable("home") * maxMoneyRatio > purchaseCost) {
-      const purchaseRatio = purchaseProduction / purchaseCost;
-      if (purchaseRatio > bestInvestmentRatio) {
-        bestInvestmentRatio = purchaseRatio;
+    if (moneyAvailable * maxMoneyRatio > purchaseCost) {
+      if (purchaseCost < lowestCost) {
+        lowestCost = purchaseCost;
         bestInvestment = "purchase";
       }
     }
     
-    // Iterate over all existing nodes and compare upgrade costs.
+    // Check costs for all upgrades
     for (let i = 0; i < ns.hacknet.numNodes(); i++) {
-      const stats = ns.hacknet.getNodeStats(i);
-      
-      // Calculate efficiency for a level upgrade.
       const levelCost = ns.hacknet.getLevelUpgradeCost(i, 1);
-      const levelGain = ns.hacknet.getProductionForNode(stats.level + 1, stats.ram, stats.cores) - stats.production;
-      const levelRatio = levelGain / levelCost;
-      if (levelRatio > bestInvestmentRatio && ns.getServerMoneyAvailable("home") * maxMoneyRatio > levelCost) {
-        bestInvestmentRatio = levelRatio;
+      const ramCost = ns.hacknet.getRamUpgradeCost(i, 1);
+      const coreCost = ns.hacknet.getCoreUpgradeCost(i, 1);
+      
+      // Only upgrade if we're under the money limit.
+      if (moneyAvailable * maxMoneyRatio > levelCost && levelCost < lowestCost) {
+        lowestCost = levelCost;
         bestInvestment = `level_${i}`;
       }
-
-      // Calculate efficiency for a RAM upgrade.
-      const ramCost = ns.hacknet.getRamUpgradeCost(i, 1);
-      const ramGain = ns.hacknet.getProductionForNode(stats.level, stats.ram + 1, stats.cores) - stats.production;
-      const ramRatio = ramGain / ramCost;
-      if (ramRatio > bestInvestmentRatio && ns.getServerMoneyAvailable("home") * maxMoneyRatio > ramCost) {
-        bestInvestmentRatio = ramRatio;
+      if (moneyAvailable * maxMoneyRatio > ramCost && ramCost < lowestCost) {
+        lowestCost = ramCost;
         bestInvestment = `ram_${i}`;
       }
-
-      // Calculate efficiency for a cores upgrade.
-      const coreCost = ns.hacknet.getCoreUpgradeCost(i, 1);
-      const coreGain = ns.hacknet.getProductionForNode(stats.level, stats.ram, stats.cores + 1) - stats.production;
-      const coreRatio = coreGain / coreCost;
-      if (coreRatio > bestInvestmentRatio && ns.getServerMoneyAvailable("home") * maxMoneyRatio > coreCost) {
-        bestInvestmentRatio = coreRatio;
+      if (moneyAvailable * maxMoneyRatio > coreCost && coreCost < lowestCost) {
+        lowestCost = coreCost;
         bestInvestment = `core_${i}`;
       }
     }
 
-    // Execute the best investment if enough money is available.
-    const money = ns.getServerMoneyAvailable("home");
-    switch (bestInvestment) {
-      case "purchase":
-        if (money >= purchaseCost) {
+    // Execute the best investment
+    if (bestInvestment !== "none") {
+      switch (bestInvestment) {
+        case "purchase":
           ns.hacknet.purchaseNode();
-        }
-        break;
-      default:
-        const parts = bestInvestment.split('_');
-        const upgradeType = parts[0];
-        const index = parseInt(parts[1]);
-        if (upgradeType === "level" && money >= ns.hacknet.getLevelUpgradeCost(index, 1)) {
-          ns.hacknet.upgradeLevel(index, 1);
-        } else if (upgradeType === "ram" && money >= ns.hacknet.getRamUpgradeCost(index, 1)) {
-          ns.hacknet.upgradeRam(index, 1);
-        } else if (upgradeType === "core" && money >= ns.hacknet.getCoreUpgradeCost(index, 1)) {
-          ns.hacknet.upgradeCore(index, 1);
-        }
-        break;
+          ns.tprint("INFO: Purchased a new Hacknet node.");
+          break;
+        default:
+          const parts = bestInvestment.split('_');
+          const upgradeType = parts[0];
+          const index = parseInt(parts[1]);
+          
+          if (upgradeType === "level") {
+            ns.hacknet.upgradeLevel(index, 1);
+            ns.tprint(`INFO: Upgraded Hacknet Node ${index} level.`);
+          } else if (upgradeType === "ram") {
+            ns.hacknet.upgradeRam(index, 1);
+            ns.tprint(`INFO: Upgraded Hacknet Node ${index} RAM.`);
+          } else if (upgradeType === "core") {
+            ns.hacknet.upgradeCore(index, 1);
+            ns.tprint(`INFO: Upgraded Hacknet Node ${index} cores.`);
+          }
+          break;
+      }
     }
     await ns.sleep(100);
   }

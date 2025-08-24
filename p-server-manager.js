@@ -1,29 +1,38 @@
 /** @param {NS} ns */
 export async function main(ns) {
   // --- USER SETTINGS ---
-  // The amount of RAM for the new server (we will buy the biggest available).
-  const maxServerRam = ns.getPurchasedServerMaxRam();
-  // The name of the worker script that will be copied and run.
+  const serverNamePrefix = "TakiNya";
   const scriptToRun = "hack.js";
 
   while (true) {
     const purchasedServers = ns.getPurchasedServers();
 
-    // PHASE 1: Buy a new server if we haven't reached the limit yet.
+    // PHASE 1: Buy a new server if the limit has not been reached yet.
     if (purchasedServers.length < ns.getPurchasedServerLimit()) {
-      const serverCost = ns.getPurchasedServerCost(maxServerRam);
+      const money = ns.getServerMoneyAvailable("home");
+      let bestRam = 0;
 
-      if (ns.getServerMoneyAvailable("home") >= serverCost) {
-        const newServerName = ns.purchaseServer("pserv", maxServerRam);
-        ns.tprint(`SUCCESS: Bought new server '${newServerName}' with ${ns.nFormat(maxServerRam, '0.00a')}GB RAM.`);
+      // Find the largest server we can afford.
+      for (let ram = 16; ram <= ns.getPurchasedServerMaxRam(); ram *= 2) {
+        const cost = ns.getPurchasedServerCost(ram);
+        if (money >= cost) {
+          bestRam = ram;
+        }
+      }
+
+      if (bestRam > 0) {
+        const cost = ns.getPurchasedServerCost(bestRam);
+        const newServerName = ns.purchaseServer(serverNamePrefix, bestRam);
+        ns.tprint(`SUCCESS: Bought new server '${newServerName}' with ${ns.nFormat(bestRam, '0.00a')}GB RAM.`);
         await ns.scp(scriptToRun, newServerName);
         ns.tprint(`SUCCESS: Deployed '${scriptToRun}' on '${newServerName}'.`);
       }
     } 
     
-    // PHASE 2: Upgrade a server if we have reached the limit.
+    // PHASE 2: Upgrade a server if the limit has been reached.
     else {
       // Find the weakest server to upgrade.
+      const maxServerRam = ns.getPurchasedServerMaxRam();
       let weakestServer = "";
       let lowestRam = maxServerRam + 1;
       
@@ -44,7 +53,7 @@ export async function main(ns) {
           ns.killall(weakestServer);
           ns.deleteServer(weakestServer);
 
-          const newServerName = ns.purchaseServer("pserv", maxServerRam);
+          const newServerName = ns.purchaseServer(serverNamePrefix, maxServerRam);
           ns.tprint(`SUCCESS: Replaced '${weakestServer}' with '${newServerName}' (${ns.nFormat(maxServerRam, '0.00a')}GB).`);
           await ns.scp(scriptToRun, newServerName);
           ns.tprint(`SUCCESS: Deployed '${scriptToRun}' on '${newServerName}'.`);
