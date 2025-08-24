@@ -1,0 +1,2 @@
+# BitBurnerScripts
+Collection of Scripts
