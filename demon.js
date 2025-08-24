@@ -1,13 +1,14 @@
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.tprint("INFO: Starte allmächtigen Hacking-Daemon (Finden, Nuken, HGW)...");
+    ns.tprint("INFO: Starting the all-in-one hacking daemon (Scan, Nuke, HGW)...");
 
     const weakenScript = "weaken-worker.js";
     const growScript = "grow-worker.js";
     const hackScript = "hack-worker.js";
+    const workerScripts = [weakenScript, growScript, hackScript];
 
-    // Eine Liste der Port-Öffner-Programme
+    // A list of the port-opening programs.
     const portOpeners = [
         { name: "BruteSSH.exe", open: ns.brutessh },
         { name: "FTPCrack.exe", open: ns.ftpcrack },
@@ -20,10 +21,15 @@ export async function main(ns) {
         const allServers = getAllServers(ns);
         const hackerServers = allServers.filter(s => ns.hasRootAccess(s) && ns.getServerMaxRam(s) > 0);
 
+        // OPTIMIZATION: Copy worker scripts to all hacker servers once per cycle.
+        for (const hacker of hackerServers) {
+            await ns.scp(workerScripts, hacker, "home");
+        }
+
         for (const target of allServers) {
             if (ns.getServer(target).purchasedByPlayer || target === "home") continue;
 
-            // --- NEUER TEIL: VERSUCHE, ROOT ZU ERLANGEN ---
+            // --- Part 1: Attempt to gain root access ---
             if (!ns.hasRootAccess(target)) {
                 let openPorts = 0;
                 for (const opener of portOpeners) {
@@ -32,19 +38,18 @@ export async function main(ns) {
                         openPorts++;
                     }
                 }
-
                 if (openPorts >= ns.getServerNumPortsRequired(target) && ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(target)) {
                     ns.nuke(target);
-                    ns.tprint(`SUCCESS: Root-Zugang auf ${target} erlangt!`);
+                    ns.tprint(`SUCCESS: Gained root access on ${target}!`);
                 }
             }
             
-            // --- HGW-LOGIK (nur wenn wir Root-Zugang haben) ---
+            // --- Part 2: HGW Logic (if we have root) ---
             if (ns.hasRootAccess(target) && ns.getServerMaxMoney(target) > 0) {
                 const minSecurity = ns.getServerMinSecurityLevel(target);
                 const maxMoney = ns.getServerMaxMoney(target);
 
-                // Entscheide, was zu tun ist...
+                // Decide which action to take...
                 let scriptToRun;
                 if (ns.getServerSecurityLevel(target) > minSecurity + 5) {
                     scriptToRun = weakenScript;
@@ -54,24 +59,22 @@ export async function main(ns) {
                     scriptToRun = hackScript;
                 }
 
-                // ...und verteile die Aufgabe
+                // ...and dispatch the task to our hacker servers.
+                const scriptRam = ns.getScriptRam(scriptToRun);
                 for (const hacker of hackerServers) {
-                    // Diese Logik kann man noch verfeinern, aber als Basis ist sie gut
-                    const scriptRam = ns.getScriptRam(scriptToRun, hacker);
                     const availableRam = ns.getServerMaxRam(hacker) - ns.getServerUsedRam(hacker);
                     const threads = Math.floor(availableRam / scriptRam);
                     if (threads > 0) {
-                        await ns.scp([weakenScript, growScript, hackScript], hacker);
                         ns.exec(scriptToRun, hacker, threads, target);
                     }
                 }
             }
         }
-        await ns.sleep(10000); // Warte 10 Sekunden vor dem nächsten kompletten Durchlauf
+        await ns.sleep(10000); // Wait 10 seconds before the next full cycle.
     }
 }
 
-// Die bekannte Funktion zum Scannen aller Server
+// Helper function to scan for all servers in the network.
 function getAllServers(ns) {
     const visited = new Set(["home"]);
     const queue = ["home"];

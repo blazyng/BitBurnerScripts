@@ -2,18 +2,19 @@
 export async function main(ns) {
     ns.tprint("INFO: Checking status of essential daemons...");
 
-    // Eine Liste aller deiner Manager-Skripte, die immer laufen sollen.
+    // A list of all your manager scripts that should run continuously.
     const daemons = [
         "demon.js",
         "hacknet-manager.js",
         "p-server-manager.js",
         "stockMarket.js"
+        // Add "reputation-manager.js" here once you've created it.
     ];
 
     for (const script of daemons) {
-        // Prüfe, ob das Skript NICHT bereits auf 'home' läuft.
+        // Check if the script is NOT already running on 'home'.
         if (!ns.isRunning(script, "home")) {
-            // Wenn es nicht läuft, starte es.
+            // If it's not running, start it.
             ns.run(script);
             ns.tprint(`SUCCESS: Started '${script}'.`);
         } else {
