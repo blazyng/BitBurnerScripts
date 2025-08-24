@@ -14,7 +14,7 @@ export async function main(ns) {
         ns.tprint("ERROR: Not enough privileges to access the stock market. Check your factions for 'TIX API Access'.");
         const tixApiCost = 15000000000; // Hardcoded cost to show the player what to aim for.
         const myMoney = ns.getServerMoneyAvailable("home");
-        ns.tprint(`Money needed for TIX API Access: ${ns.nFormat(tixApiCost, '0.00a')}. Current money: ${ns.nFormat(myMoney, '0.00a')}`);
+        ns.tprint(`Money needed for TIX API Access: ${ns.formatNumber(tixApiCost)}. Current money: ${ns.formatNumber(myMoney)}`);
         await ns.sleep(60000); // Wait 1 minute before checking again.
         continue;
     }
