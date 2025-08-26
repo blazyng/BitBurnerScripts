@@ -1,92 +1,122 @@
-/** @param {NS} ns */
+/**
+ * Advanced Hacking Daemon v3.0 (Batch Processor)
+ * - Plans all HGW actions in a "batch" before executing.
+ * - Distributes tasks intelligently across the entire network's RAM.
+ * - This is the most efficient HGW model.
+ * @param {NS} ns
+ */
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.tprint("INFO: Starting the all-in-one hacking daemon (Scan, Nuke, HGW)...");
+    ns.tprint("INFO: Starting Batch Hacking Daemon v3.0...");
 
-    const weakenScript = "weaken-worker.js";
-    const growScript = "grow-worker.js";
-    const hackScript = "hack-worker.js";
-    const workerScripts = [weakenScript, growScript, hackScript];
-
-    // A list of the port-opening programs.
-    const portOpeners = [
-        { name: "BruteSSH.exe", open: ns.brutessh },
-        { name: "FTPCrack.exe", open: ns.ftpcrack },
-        { name: "relaySMTP.exe", open: ns.relaysmtp },
-        { name: "HTTPWorm.exe", open: ns.httpworm },
-        { name: "SQLInject.exe", open: ns.sqlinject }
-    ];
+    const worker = {
+        weaken: "weaken-worker.js",
+        grow: "grow-worker.js",
+        hack: "hack-worker.js",
+    };
 
     while (true) {
         const allServers = getAllServers(ns);
-        const hackerServers = allServers.filter(s => ns.hasRootAccess(s) && ns.getServerMaxRam(s) > 0);
+        const player = ns.getPlayer();
 
-        // OPTIMIZATION: Copy worker scripts to all hacker servers once per cycle.
-        for (const hacker of hackerServers) {
-            await ns.scp(workerScripts, hacker, "home");
-        }
-
+        // --- Phase 1: Analyze all targets and create a task list ---
+        let tasks = [];
         for (const target of allServers) {
-            if (ns.getServer(target).purchasedByPlayer || target === "home") continue;
+            const server = ns.getServer(target);
+            if (server.purchasedByPlayer || target === "home" || server.moneyMax === 0) continue;
 
-            // --- Part 1: Attempt to gain root access ---
-            if (!ns.hasRootAccess(target)) {
-                let openPorts = 0;
-                for (const opener of portOpeners) {
-                    if (ns.fileExists(opener.name, "home")) {
-                        opener.open(target);
-                        openPorts++;
-                    }
-                }
-                if (openPorts >= ns.getServerNumPortsRequired(target) && ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(target)) {
-                    ns.nuke(target);
-                    ns.tprint(`SUCCESS: Gained root access on ${target}!`);
+            // Nuke if needed
+            if (!server.hasAdminRights) {
+                if (tryNuke(ns, target)) {
+                    server.hasAdminRights = true; // Update our view of the server
+                } else {
+                    continue; // Can't hack, so skip
                 }
             }
-            
-            // --- Part 2: HGW Logic (if we have root) ---
-            if (ns.hasRootAccess(target) && ns.getServerMaxMoney(target) > 0) {
-                const minSecurity = ns.getServerMinSecurityLevel(target);
-                const maxMoney = ns.getServerMaxMoney(target);
 
-                // Decide which action to take...
-                let scriptToRun;
-                if (ns.getServerSecurityLevel(target) > minSecurity + 5) {
-                    scriptToRun = weakenScript;
-                } else if (ns.getServerMoneyAvailable(target) < maxMoney * 0.8) {
-                    scriptToRun = growScript;
-                } else {
-                    scriptToRun = hackScript;
-                }
+            // HGW Planning
+            const moneyThresh = server.moneyMax * 0.8;
+            const securityThresh = server.minDifficulty + 5;
 
-                // ...and dispatch the task to our hacker servers.
-                const scriptRam = ns.getScriptRam(scriptToRun);
-                for (const hacker of hackerServers) {
-                    const availableRam = ns.getServerMaxRam(hacker) - ns.getServerUsedRam(hacker);
-                    const threads = Math.floor(availableRam / scriptRam);
-                    if (threads > 0) {
-                        ns.exec(scriptToRun, hacker, threads, target);
-                    }
+            if (server.hackDifficulty > securityThresh) {
+                // Needs weakening
+                const threadsNeeded = Math.ceil((server.hackDifficulty - server.minDifficulty) / ns.weakenAnalyze(1));
+                tasks.push({ script: worker.weaken, threads: threadsNeeded, target: target, priority: 1 });
+            } else if (server.moneyAvailable < moneyThresh) {
+                // Needs growing
+                const growthFactor = server.moneyMax / Math.max(server.moneyAvailable, 1);
+                const threadsNeeded = Math.ceil(ns.growthAnalyze(target, growthFactor));
+                tasks.push({ script: worker.grow, threads: threadsNeeded, target: target, priority: 2 });
+            } else {
+                // Ready to hack
+                const threadsNeeded = Math.floor(ns.hackAnalyzeThreads(target, server.moneyAvailable * 0.25));
+                if (threadsNeeded > 0) {
+                    tasks.push({ script: worker.hack, threads: threadsNeeded, target: target, priority: 3 });
                 }
             }
         }
-        await ns.sleep(10000); // Wait 10 seconds before the next full cycle.
+
+        // Sort tasks by priority (weaken > grow > hack)
+        tasks.sort((a, b) => a.priority - b.priority);
+
+        // --- Phase 2 & 3: Distribute and Execute Tasks ---
+        const hackerServers = allServers.filter(s => ns.hasRootAccess(s) && ns.getServerMaxRam(s) > 0);
+        
+        // Ensure worker scripts are everywhere
+        for (const hacker of hackerServers) {
+            await ns.scp(Object.values(worker), hacker, "home");
+        }
+
+        for (const task of tasks) {
+            let threadsRemaining = task.threads;
+            for (const hacker of hackerServers) {
+                if (threadsRemaining <= 0) break;
+
+                const scriptRam = ns.getScriptRam(task.script, hacker);
+                const availableRam = ns.getServerMaxRam(hacker) - ns.getServerUsedRam(hacker);
+                const possibleThreads = Math.floor(availableRam / scriptRam);
+
+                if (possibleThreads > 0) {
+                    const threadsToRun = Math.min(threadsRemaining, possibleThreads);
+                    ns.exec(task.script, hacker, threadsToRun, task.target);
+                    threadsRemaining -= threadsToRun;
+                }
+            }
+        }
+
+        await ns.sleep(1000); // Shorter sleep, as we are more precise now
     }
 }
 
-// Helper function to scan for all servers in the network.
+// --- Helper Functions ---
 function getAllServers(ns) {
     const visited = new Set(["home"]);
     const queue = ["home"];
     while (queue.length > 0) {
-        const server = queue.shift();
-        const connectedServers = ns.scan(server);
-        for (const connectedServer of connectedServers) {
-            if (!visited.has(connectedServer)) {
-                visited.add(connectedServer);
-                queue.push(connectedServer);
+        const connectedServers = ns.scan(queue.shift());
+        for (const server of connectedServers) {
+            if (!visited.has(server)) {
+                visited.add(server);
+                queue.push(server);
             }
         }
     }
     return [...visited];
+}
+
+function tryNuke(ns, target) {
+    const portOpeners = [ns.brutessh, ns.ftpcrack, ns.relaysmtp, ns.httpworm, ns.sqlinject];
+    const exeFiles = ["BruteSSH.exe", "FTPCrack.exe", "relaySMTP.exe", "HTTPWorm.exe", "SQLInject.exe"];
+    let openPorts = 0;
+    for (let i = 0; i < exeFiles.length; i++) {
+        if (ns.fileExists(exeFiles[i], "home")) {
+            portOpeners[i](target);
+            openPorts++;
+        }
+    }
+    if (openPorts >= ns.getServerNumPortsRequired(target) && ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(target)) {
+        ns.nuke(target);
+        return true;
+    }
+    return false;
 }
