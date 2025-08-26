@@ -1,82 +1,110 @@
-/** @param {NS} ns */
+/**
+ * Advanced Stock Market Script v2.2
+ * - FIX: Corrected the function call to ns.singularity.getOwnedSourceFiles().
+ * @param {NS} ns
+ */
 export async function main(ns) {
-    // --- YOUR TARGET SETTING ---
-    // At what total portfolio value (cash + stock value) should the script stop?
-    const targetValue = 20_000_000_000; // Example: 20 billion
-
-    // --- Trading Settings ---
-    const cashReserve = 1_000_000;      // Fixed reserve for trading
-    const investmentRatio = 0.25;       // How much of available money to invest per cycle?
-    const buyThreshold = 0.6;
-    const sellThreshold = 0.55;
-    const transactionFee = 100_000;
-
     ns.disableLog("ALL");
 
+    // --- SETTINGS ---
+    const investmentRatio = 0.75;
+    const cashReserve = 5_000_000;
+    const buyThreshold = 0.60;
+    const shortThreshold = 0.45;
+
+    // --- AUTO-CONFIGURATION ---
+    let shortingEnabled = false;
+    // Check if Singularity functions are available first.
+    if (ns.singularity !== undefined) {
+        // CORRECTION: The function is part of ns.singularity
+        const sourceFiles = ns.singularity.getOwnedSourceFiles();
+        const player = ns.getPlayer();
+        if (player.bitNodeN === 8) {
+            shortingEnabled = true;
+        } else {
+            const sf8 = sourceFiles.find(sf => sf.n === 8);
+            if (sf8 && sf8.lvl >= 2) {
+                shortingEnabled = true;
+            }
+        }
+    }
+    if(shortingEnabled) ns.tprint("SUCCESS: Shorting capabilities detected and enabled.");
+
+
     while (true) {
-        // --- 1. CALCULATE PORTFOLIO VALUE ---
-        const allSymbols = ns.stock.getSymbols();
-        let currentCash = ns.getServerMoneyAvailable("home");
-        let stockValue = 0;
-        for (const sym of allSymbols) {
-            const [shares] = ns.stock.getPosition(sym);
-            if (shares > 0) {
-                stockValue += shares * ns.stock.getBidPrice(sym);
-            }
-        }
-        const portfolioValue = currentCash + stockValue;
-
-        // Print status to the log so you can track progress
-        ns.print(`INFO: Portfolio Value: ${ns.formatNumber(portfolioValue)} / ${ns.formatNumber(targetValue)}`);
-
-        // --- 2. CHECK TARGET VALUE ---
-        if (portfolioValue >= targetValue) {
-            ns.tprint(`SUCCESS: Target value of ${ns.formatNumber(targetValue)} reached!`);
-            ns.tprint("Selling all positions and exiting the script...");
-
-            for (const sym of allSymbols) {
-                const [shares] = ns.stock.getPosition(sym);
-                if (shares > 0) {
-                    const salePrice = ns.stock.sellStock(sym, shares);
-                    ns.tprint(`-> Sold: ${ns.formatNumber(shares)}x ${sym} for ${ns.formatNumber(shares * salePrice)}`);
-                }
-            }
-            ns.tprint("All stocks sold. Script terminating.");
-            return; // Terminates the script completely
-        }
-
-        // --- 3. NORMAL TRADING LOGIC (IF TARGET IS NOT MET) ---
-
-        // Sell Phase
-        for (const sym of allSymbols) {
-            const [shares] = ns.stock.getPosition(sym);
-            if (shares > 0) {
-                let forecast = 0;
-                try { forecast = ns.stock.getForecast(sym); } catch (e) { continue; }
-                if (forecast < sellThreshold) {
-                    ns.stock.sellStock(sym, shares);
-                }
-            }
-        }
-
-        // Buy Phase
-        let availableCash = ns.getServerMoneyAvailable("home") - cashReserve;
-        let investmentBudget = availableCash * investmentRatio;
-        for (const sym of allSymbols) {
-            let forecast = 0;
-            try { forecast = ns.stock.getForecast(sym); } catch (e) { continue; }
-            if (forecast >= buyThreshold) {
-                const stockPrice = ns.stock.getAskPrice(sym);
-                let maxShares = Math.floor((investmentBudget - transactionFee) / stockPrice);
-                if (maxShares * stockPrice > 1_000_000) { // Minimum investment of 1m
-                    const sharesBought = ns.stock.buyStock(sym, maxShares);
-                    if (sharesBought > 0) {
-                         investmentBudget -= (sharesBought * stockPrice) + transactionFee;
-                    }
-                }
-            }
-        }
+        ns.clearLog();
+        let portfolioValue = ns.getServerMoneyAvailable("home");
         
-        await ns.stock.nextUpdate();
+        // --- Phase 1 & 2: Analyze and Sell Positions ---
+        for (const sym of ns.stock.getSymbols()) {
+            const [shares, , sharesShort, ] = ns.stock.getPosition(sym);
+            portfolioValue += shares * ns.stock.getBidPrice(sym) + sharesShort * ns.stock.getBidPrice(sym);
+            const forecast = ns.stock.getForecast(sym);
+
+            if (shares > 0 && forecast < 0.55) {
+                ns.stock.sellStock(sym, shares);
+            }
+            if (shortingEnabled && sharesShort > 0 && forecast > 0.50) {
+                ns.stock.sellShort(sym, sharesShort);
+            }
+        }
+
+        // --- Phase 3: Find and execute new high-potential trades ---
+        let potentialTrades = [];
+        for (const sym of ns.stock.getSymbols()) {
+            const forecast = ns.stock.getForecast(sym);
+            const volatility = ns.stock.getVolatility(sym);
+            const score = Math.abs(forecast - 0.5) * volatility;
+
+            if (forecast > buyThreshold && ns.stock.getPosition(sym)[0] === 0) {
+                potentialTrades.push({ sym, type: 'Long', score, price: ns.stock.getAskPrice(sym) });
+            }
+            if (shortingEnabled && forecast < shortThreshold && ns.stock.getPosition(sym)[2] === 0) {
+                potentialTrades.push({ sym, type: 'Short', score, price: ns.stock.getBidPrice(sym) });
+            }
+        }
+
+        potentialTrades.sort((a, b) => b.score - a.score);
+
+        let investmentBudget = (ns.getServerMoneyAvailable("home") - cashReserve) * investmentRatio;
+        for (const trade of potentialTrades) {
+            if (investmentBudget <= 0) break;
+            const sharesToTrade = Math.min(Math.floor(investmentBudget / trade.price), ns.stock.getMaxShares(trade.sym));
+            
+            if (sharesToTrade > 0) {
+                if (trade.type === 'Long') {
+                    ns.stock.buyStock(trade.sym, sharesToTrade);
+                } else if (trade.type === 'Short') {
+                    ns.stock.buyShort(trade.sym, sharesToTrade);
+                }
+                investmentBudget -= sharesToTrade * trade.price;
+            }
+        }
+
+        // --- Phase 4: Print Dashboard ---
+        printDashboard(ns, portfolioValue, shortingEnabled);
+        await ns.sleep(6000);
+    }
+}
+
+function printDashboard(ns, portfolioValue, shortingEnabled) {
+    ns.printf("--- BitBurner Stock Manager v2.2 ---");
+    ns.printf("Portfolio Value: %s | Shorting: %s", ns.formatNumber(portfolioValue), shortingEnabled ? "✅" : "❌");
+    ns.printf("----------------------------------------------------------");
+    ns.printf("%-6s | %-10s | %-12s | %-12s | %-8s", "Symbol", "Type", "Shares", "Profit", "Forecast");
+    ns.printf("----------------------------------------------------------");
+
+    for (const sym of ns.stock.getSymbols()) {
+        const [shares, avgPx, sharesShort, avgPxShort] = ns.stock.getPosition(sym);
+        const forecast = ns.stock.getForecast(sym);
+
+        if (shares > 0) {
+            const profit = (ns.stock.getBidPrice(sym) - avgPx) * shares;
+            ns.printf("%-6s | %-10s | %-12s | %-12s | %-8.2f%%", sym, "Long", ns.formatNumber(shares, 2), ns.formatNumber(profit), forecast * 100);
+        }
+        if (sharesShort > 0) {
+            const profit = (avgPxShort - ns.stock.getAskPrice(sym)) * sharesShort;
+            ns.printf("%-6s | %-10s | %-12s | %-12s | %-8.2f%%", sym, "Short", ns.formatNumber(sharesShort, 2), ns.formatNumber(profit), forecast * 100);
+        }
     }
 }
